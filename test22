@@ -1,0 +1,256 @@
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using DG.Tweening;
+public class CameraController_Touch_Mouse : MonoBehaviour
+{
+
+    [Header("摄像机围绕的目标物体")] public Transform T_target1;
+    [Header("目标点距离相机的当前距离")] public float F_目标点与相机的当前距离;
+    [Header("目标点与摄像机的最小距离")] public float F_目标点与相机的最小距离 = 30f;
+    [Header("目标点与摄像机的最大距离")] public float F_目标点与相机的最大距离 = 300f;
+    [Header("目标点与摄像机的初始距离")] public float F_目标点与相机的初始距离 = 60f;
+    [Header("旋转速度")] public float F_拖动相机时的旋转速度 = 200.0f;
+    [Header("缩放速度")] public float F_缩放相机视角时的速度 = 2f;
+    [Header("阻尼值(数值越大效果越明显)")] public float F_阻尼值 = 0.2f;
+
+    [Header("Y轴最小倾斜角度")] public float F_Y轴最小倾斜角度 = -20f;
+    [Header("Y轴最大倾斜角度")] public float F_Y轴最大倾斜角度 = 80f;
+    [Header("初始Y轴旋转角度")] public float F_Y轴初始值 = 180;
+    [Header("初始X轴旋转角度")] public float F_X轴初始值 = 0;
+    [Header("是否允许平滑效果")] public bool Is_允许平滑效果 = true;
+    [Header("是否允许控制相机")] public bool Is_允许控制相机 = false;
+    [Header("是否允许Y轴倾斜")] private bool Is_允许Y轴倾斜 = true;
+
+
+
+    float xPoint = 0f;   //X轴坐标
+    float yPoint = 0.0f;  //Y轴坐标
+    float xTargetPoint = 0f;  //目标X轴坐标
+    float yTargetPoint = 0f; //目标Y轴坐标
+    float xVelocityPoint = 1f;  //X水平轴坐标
+    float yVelocityPoint = 1f; //Y水平轴坐标
+    float zoomVelocity;  //产出值 (临时用)
+    Vector3 pivotOffset = new Vector3(0, 0, 0); //位置偏移
+    float F_目标点距离相机的平滑距离;
+    float F_远视角的距离 = 600;
+
+    void Start()
+    {
+        初始化();
+        相机瞬移到某位置();
+        StartCoroutine("IE_视角拉近到某一点", "原点");
+    }
+
+    void Update()
+    {
+
+        if (xTargetPoint >= 180) { xTargetPoint -= 360; }
+        xTargetPoint = Mathf.Repeat(xTargetPoint, 360);
+     
+    }
+
+    void LateUpdate()
+    {
+        if (!T_target1) return;
+
+        if (Is_允许控制相机)
+        {
+            // 手指触摸控制
+            if (Input.touchCount > 0)
+            {
+
+                Touch touch = Input.GetTouch(0);
+
+                // Handle pinch to zoom
+                if (Input.touchCount == 2)
+                {
+                    Touch touch1 = Input.GetTouch(0);
+                    Touch touch2 = Input.GetTouch(1);
+
+                    Vector2 touch1PrevPos = touch1.position - touch1.deltaPosition;
+                    Vector2 touch2PrevPos = touch2.position - touch2.deltaPosition;
+
+                    float prevTouchDeltaMag = (touch1PrevPos - touch2PrevPos).magnitude;
+                    float touchDeltaMag = (touch1.position - touch2.position).magnitude;
+
+                    float deltaMagnitudeDiff = prevTouchDeltaMag - touchDeltaMag;
+
+                    F_目标点与相机的当前距离 += deltaMagnitudeDiff * F_缩放相机视角时的速度 * 0.05f;
+                }
+
+                // Handle rotation
+                else if (touch.phase == TouchPhase.Moved)
+                {
+                    xTargetPoint += touch.deltaPosition.x * F_拖动相机时的旋转速度 * 0.025f * 0.05f;
+                    if (Is_允许Y轴倾斜)
+                    {
+                        yTargetPoint -= touch.deltaPosition.y * F_拖动相机时的旋转速度 * 0.025f * 0.05f;
+                        yTargetPoint = ClampAngle(yTargetPoint, F_Y轴最小倾斜角度, F_Y轴最大倾斜角度);
+                    }
+                }
+            }
+            else
+            {
+
+                // 鼠标控制
+                var scroll = Input.GetAxis("Mouse ScrollWheel");
+                if (scroll > 0.0f) F_目标点与相机的当前距离 -= F_缩放相机视角时的速度 * 2;
+                else if (scroll < 0.0f) { F_目标点与相机的当前距离 += F_缩放相机视角时的速度 * 2; }
+
+                if (Input.GetMouseButton(0))
+                {
+                    xTargetPoint += Input.GetAxis("Mouse X") * F_拖动相机时的旋转速度 * 0.025f;
+                    if (Is_允许Y轴倾斜)
+                    {
+                        yTargetPoint -= Input.GetAxis("Mouse Y") * F_拖动相机时的旋转速度 * 0.025f;
+                        yTargetPoint = ClampAngle(yTargetPoint, F_Y轴最小倾斜角度, F_Y轴最大倾斜角度);
+                    }
+                }
+            }
+        }
+        // 限制距离在最大最小值内
+        F_目标点与相机的当前距离 = Mathf.Clamp(F_目标点与相机的当前距离, F_目标点与相机的最小距离, F_目标点与相机的最大距离);
+
+        if (Is_允许平滑效果)
+        {
+            xPoint = Mathf.SmoothDampAngle(xPoint, xTargetPoint, ref xVelocityPoint, F_阻尼值);
+            yPoint = Is_允许Y轴倾斜 ? Mathf.SmoothDampAngle(yPoint, yTargetPoint, ref yVelocityPoint, F_阻尼值) : yTargetPoint;
+            Quaternion rotation = Quaternion.Euler(yPoint, xPoint, 0);
+            F_目标点距离相机的平滑距离 = Mathf.SmoothDamp(F_目标点距离相机的平滑距离, F_目标点与相机的当前距离, ref zoomVelocity, F_阻尼值);
+            Vector3 position = rotation * new Vector3(0.0f, 0.0f, -F_目标点距离相机的平滑距离) + T_target1.position + pivotOffset;
+            transform.position = position;
+            transform.rotation = rotation;
+        }
+        else
+        {
+            Quaternion rotation = Quaternion.Euler(yTargetPoint, xTargetPoint, 0);
+            Vector3 position = rotation * new Vector3(0.0f, 0.0f, -F_目标点与相机的当前距离) + T_target1.position + pivotOffset;
+            transform.position = position;
+            transform.rotation = rotation;
+        }
+
+
+
+    }
+
+    public void 初始化()
+    {
+        Is_允许控制相机 = true;
+        var angles = transform.eulerAngles;
+        xTargetPoint = xPoint = F_Y轴初始值;
+        yTargetPoint = yPoint = F_X轴初始值;
+        F_目标点与相机的当前距离 = F_目标点与相机的初始距离;
+    }
+    public void 停止视角拉进动画()
+    {
+
+        Is_允许平滑效果 = false;
+
+    }
+
+    public void 相机瞬移到某位置()
+    {
+        Is_允许平滑效果 = false;
+        F_目标点与相机的最大距离 = 9999;
+        F_目标点与相机的当前距离 = F_远视角的距离;
+        xTargetPoint = 270;
+        yTargetPoint = 0;
+        Quaternion rotation = Quaternion.Euler(yTargetPoint, xTargetPoint, 0);
+        Vector3 position = rotation * new Vector3(0.0f, 0.0f, -F_目标点与相机的当前距离) + T_target1.position + pivotOffset;
+        transform.position = position;
+        transform.rotation = rotation;
+        F_目标点距离相机的平滑距离 = F_目标点与相机的当前距离;
+        xPoint = xTargetPoint;
+        yPoint = yTargetPoint;
+        //  Is_允许平滑效果 = true;
+
+    }
+
+    public void 相机迅速平滑到远视角位置()
+    {
+        F_目标点与相机的当前距离 = F_远视角的距离;
+        xTargetPoint = 270;
+        yTargetPoint = 0;
+    }
+
+    public void 更改限制相机最近距离值(float a)
+    {
+        F_目标点与相机的最小距离 = a;
+    }
+
+    public void 更改限制相机最远距离值(float b)
+    {
+        F_目标点与相机的最大距离 = b;
+    }
+
+    IEnumerator IE_视角拉近到某一点(string a)
+    {
+        //  Is_允许控制相机 = false;
+        float F_变化时间 = 1;
+        Is_允许平滑效果 = true;
+        switch (a)
+        {
+            case "原点":
+              //  T_target1.transform.DOMove(YiLou_ALL_GO.INS.Target_相机目标点_原点.transform.position, F_变化时间).SetEase(Ease.InOutSine);
+
+                break;
+
+
+            case "总部":
+              //  T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_创业总部创业体验平台.transform.position, F_变化时间).SetEase(Ease.InOutSine);
+
+
+                break;
+
+            case "共享":
+               // T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_创业共享服务区.transform.position, F_变化时间).SetEase(Ease.InOutSine);
+
+
+                break;
+            case "虚拟":
+              //  T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_虚拟体验场景.transform.position, F_变化时间).SetEase(Ease.InOutSine);
+
+
+                break;
+            case "活动":
+             //   T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_创业活动服务区.transform.position, F_变化时间).SetEase(Ease.InOutSine);
+
+
+                break;
+        }
+
+        if (a == "原点")
+        {
+            DOTween.To(() => F_目标点与相机的当前距离, x => F_目标点与相机的当前距离 = x, 17, F_变化时间).SetEase(Ease.Linear);
+            DOTween.To(() => xTargetPoint, x => xTargetPoint = x, 180, F_变化时间).SetEase(Ease.Linear);
+            DOTween.To(() => yTargetPoint, x => yTargetPoint = x, 50, F_变化时间).SetEase(Ease.Linear);
+            yield return new WaitForSeconds(F_变化时间 + F_阻尼值);
+            F_Y轴最小倾斜角度 = 0;
+            更改限制相机最近距离值(0);
+            更改限制相机最远距离值(200);
+
+        }
+        else
+        {
+
+            DOTween.To(() => F_目标点与相机的当前距离, x => F_目标点与相机的当前距离 = x, 50, F_变化时间).SetEase(Ease.Linear);
+            DOTween.To(() => xTargetPoint, x => xTargetPoint = x, 180, F_变化时间).SetEase(Ease.Linear);
+            DOTween.To(() => yTargetPoint, x => yTargetPoint = x, 50, F_变化时间).SetEase(Ease.Linear);
+            yield return new WaitForSeconds(F_变化时间 + F_阻尼值);
+            F_Y轴最小倾斜角度 = 0;
+            更改限制相机最近距离值(50);
+            更改限制相机最远距离值(150);
+
+
+        }
+
+    }
+
+    private static float ClampAngle(float angle, float min, float max)
+    {
+        if (angle < -360) angle += 360;
+        if (angle > 360) angle -= 360;
+        return Mathf.Clamp(angle, min, max);
+    }
+}
