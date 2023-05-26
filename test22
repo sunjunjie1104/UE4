@@ -52,7 +52,6 @@ public class CameraController_Touch_Mouse : MonoBehaviour
 
     void LateUpdate()
     {
-        if (!T_target1) return;
 
         if (Is_允许控制相机)
         {
@@ -81,7 +80,7 @@ public class CameraController_Touch_Mouse : MonoBehaviour
 
                 // Handle rotation
                 else if (touch.phase == TouchPhase.Moved)
-                {
+                { 
                     xTargetPoint += touch.deltaPosition.x * F_拖动相机时的旋转速度 * 0.025f * 0.05f;
                     if (Is_允许Y轴倾斜)
                     {
@@ -142,10 +141,9 @@ public class CameraController_Touch_Mouse : MonoBehaviour
         yTargetPoint = yPoint = F_X轴初始值;
         F_目标点与相机的当前距离 = F_目标点与相机的初始距离;
     }
-    public void 停止视角拉进动画()
-    {
 
-        Is_允许平滑效果 = false;
+    public void 相机移动到某位置(bool Is_瞬移,Vector3 pos ,Vector3 rot)
+    {
 
     }
 
@@ -174,51 +172,15 @@ public class CameraController_Touch_Mouse : MonoBehaviour
         yTargetPoint = 0;
     }
 
-    public void 更改限制相机最近距离值(float a)
-    {
-        F_目标点与相机的最小距离 = a;
-    }
+   
 
-    public void 更改限制相机最远距离值(float b)
-    {
-        F_目标点与相机的最大距离 = b;
-    }
-
+   
     IEnumerator IE_视角拉近到某一点(string a)
     {
         //  Is_允许控制相机 = false;
         float F_变化时间 = 1;
         Is_允许平滑效果 = true;
-        switch (a)
-        {
-            case "原点":
-              //  T_target1.transform.DOMove(YiLou_ALL_GO.INS.Target_相机目标点_原点.transform.position, F_变化时间).SetEase(Ease.InOutSine);
-
-                break;
-
-
-            case "总部":
-              //  T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_创业总部创业体验平台.transform.position, F_变化时间).SetEase(Ease.InOutSine);
-
-
-                break;
-
-            case "共享":
-               // T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_创业共享服务区.transform.position, F_变化时间).SetEase(Ease.InOutSine);
-
-
-                break;
-            case "虚拟":
-              //  T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_虚拟体验场景.transform.position, F_变化时间).SetEase(Ease.InOutSine);
-
-
-                break;
-            case "活动":
-             //   T_target1.transform.DOMove(YiLou_ALL_GO.INS.Targrt_相机目标点_创业活动服务区.transform.position, F_变化时间).SetEase(Ease.InOutSine);
-
-
-                break;
-        }
+      
 
         if (a == "原点")
         {
@@ -227,11 +189,11 @@ public class CameraController_Touch_Mouse : MonoBehaviour
             DOTween.To(() => yTargetPoint, x => yTargetPoint = x, 50, F_变化时间).SetEase(Ease.Linear);
             yield return new WaitForSeconds(F_变化时间 + F_阻尼值);
             F_Y轴最小倾斜角度 = 0;
-            更改限制相机最近距离值(0);
-            更改限制相机最远距离值(200);
-
+            F_目标点与相机的最小距离 = 0;
+            F_目标点与相机的最大距离 = 200;
         }
         else
+
         {
 
             DOTween.To(() => F_目标点与相机的当前距离, x => F_目标点与相机的当前距离 = x, 50, F_变化时间).SetEase(Ease.Linear);
@@ -239,9 +201,8 @@ public class CameraController_Touch_Mouse : MonoBehaviour
             DOTween.To(() => yTargetPoint, x => yTargetPoint = x, 50, F_变化时间).SetEase(Ease.Linear);
             yield return new WaitForSeconds(F_变化时间 + F_阻尼值);
             F_Y轴最小倾斜角度 = 0;
-            更改限制相机最近距离值(50);
-            更改限制相机最远距离值(150);
-
+            F_目标点与相机的最小距离 = 50;
+            F_目标点与相机的最大距离 = 150;
 
         }
 
