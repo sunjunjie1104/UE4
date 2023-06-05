@@ -1,0 +1,563 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using DG.Tweening;
+public enum ENUM_当前界面 { 待机界面, 位置校准界面, 选择男女界面, 切换衣服卡片界面 }
+public enum ENUM_选择的性别 { 男, 女, 无 }
+public class ALL_GO : MonoBehaviour
+{
+
+    //警礼服 0 
+    //九九式 1
+    //八九式 2
+    //八三式 3
+    //七二式 4
+    //六六式 5
+    //五八式 6
+    //五零式 7
+
+    public ENUM_当前界面 enum_当前界面 = new ENUM_当前界面();
+    public ENUM_选择的性别 enum_选择的性别 = new ENUM_选择的性别();
+    public static ALL_GO INS;
+    public Text text1, text2, text3, text4;
+    public GameObject Panel_待机界面, Panel_位置校准界面, Panel_纯黑界面, Panel_首页, Panel_选择男女界面, Controller, G_KinectController,
+                                    Panel_切换男装卡片界面, Panel_切换女装卡片界面, G_帽子, Bu_帽子高一点, Bu_帽子低一点, Bu_整体大一点, Bu_整体小一点;
+    public Image Ima_标题背景, Ima_标题, Ima_警服介绍图1,Ima_警服介绍图2,Ima_警服介绍图3;
+    GUIStyle ss;
+    KinectManager kinectManager;
+    public Text text_显示前后距离, text_显示左右距离;
+    public float F_服装整体缩放系数_实时 = 0.9f;
+    float F_帽子高度_实时;
+    float F_帽子初始高度;
+
+    public Text te11;
+    void OnGUI()
+    {
+
+        //   GUI.Label(new Rect(100, 600, 600, 200),"前后"+ G_KinectController.GetComponent<KinectManager>().F_当前用户前后的距离.ToString(), ss);
+        // GUI.Label(new Rect(100, 800, 600, 200), "左右"+G_KinectController.GetComponent<KinectManager>().F_当前用户左右的距离.ToString(), ss);
+
+    }
+
+    void Awake()
+    {
+        INS = this;
+
+        kinectManager = G_KinectController.GetComponent<KinectManager>();
+
+        //  G_KinectController.GetComponent<KinectManager>().minUserDistance = F_与用户的最近距离;
+        //  G_KinectController.GetComponent<KinectManager>().maxUserDistance = F_与用户的最远距离;
+    }
+
+    void Start()
+    {
+        F_帽子初始高度 = G_帽子.transform.GetChild(1).transform.localPosition.y;
+        F_帽子高度_实时 = F_帽子初始高度;
+        开机眨眼效果();
+
+        初始化();
+        ss = new GUIStyle();
+        ss.normal.background = null;//背景图片 texture格式
+        ss.normal.textColor = Color.black;//字体颜色
+        ss.fontSize = 60;//字体大小
+
+
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            Application.Quit();
+        }
+
+    
+        //  显示用户距离();
+        if (G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型)
+        {
+            //  print(G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型.transform.localScale);
+        }
+
+    }
+
+
+
+    void 初始化()
+    {
+        重置界面和变量();
+
+    }
+
+    public void 开机眨眼效果()
+    {
+
+        Panel_纯黑界面.GetComponent<Image>().DOFade(1, 0);
+        Panel_纯黑界面.gameObject.SetActive(true);
+        Panel_纯黑界面.GetComponent<Image>().DOFade(0, 1);
+
+    }
+
+    public void 重置界面和变量()
+    {
+        //瞬隐选择男女界面
+        for (int i = 0; i < Panel_选择男女界面.transform.childCount; i++)
+        {
+            Panel_选择男女界面.transform.GetChild(i).GetComponent<Image>().DOFade(0, 0f);
+        }
+
+        //瞬隐按钮
+        Bu_帽子低一点.GetComponent<RectTransform>().DOScale(0, 0);
+        Bu_帽子高一点.GetComponent<RectTransform>().DOScale(0, 0);
+        Bu_整体大一点.GetComponent<RectTransform>().DOScale(0, 0);
+        Bu_整体小一点.GetComponent<RectTransform>().DOScale(0, 0);
+
+
+        //瞬隐切换衣服卡片界面
+        瞬隐女装卡片界面();
+        瞬隐男装卡片界面();
+
+        //瞬隐校准位置界面
+        Panel_位置校准界面.transform.GetChild(0).GetComponent<Image>().DOFade(0, 0f);
+        Panel_位置校准界面.transform.GetChild(1).GetComponent<Image>().DOFade(0, 0f);
+
+        显示待机界面的动画效果();
+        enum_当前界面 = ENUM_当前界面.待机界面;
+        enum_选择的性别 = ENUM_选择的性别.无;
+
+    }
+
+    public void 定位到位置校准界面()
+    {
+        //瞬隐选择男女界面
+        for (int i = 0; i < Panel_选择男女界面.transform.childCount; i++)
+        {
+            Panel_选择男女界面.transform.GetChild(i).GetComponent<Image>().DOKill();
+            Panel_选择男女界面.transform.GetChild(i).GetComponent<Image>().DOFade(0, 0f);
+        }
+
+        //瞬隐切换衣服卡片界面
+        瞬隐女装卡片界面();
+        瞬隐男装卡片界面();
+
+
+        //瞬隐待机界面
+        Panel_待机界面.transform.GetChild(0).gameObject.GetComponent<Image>().DOKill();
+        Panel_待机界面.transform.GetChild(0).gameObject.GetComponent<Image>().DOFade(0, 0);
+
+
+        显示位置校准界面的动画效果();
+        enum_当前界面 = ENUM_当前界面.位置校准界面;
+        enum_选择的性别 = ENUM_选择的性别.无;
+    }
+
+
+
+
+    public void 显示待机界面的动画效果()
+    {
+        Panel_待机界面.transform.GetChild(0).GetComponent<Image>().DOFade(1, 0.5f);
+    }
+    public void 隐藏待机界面的动画效果()
+    {
+        Panel_待机界面.transform.GetChild(0).GetComponent<Image>().DOFade(0, 0.5f);
+    }
+
+
+    public void 显示位置校准界面的动画效果()
+    {
+        Panel_位置校准界面.transform.GetChild(0).GetComponent<Image>().DOFade(1, 0.5f);
+        Panel_位置校准界面.transform.GetChild(1).GetComponent<Image>().DOFade(1, 0.5f);
+
+    }
+    public void 隐藏位置校准界面的动画效果()
+    {
+        Panel_位置校准界面.transform.GetChild(0).GetComponent<Image>().DOFade(0, 0.5f);
+        Panel_位置校准界面.transform.GetChild(1).GetComponent<Image>().DOFade(0, 0.5f);
+
+    }
+
+
+    public void 显示选择男女界面的动画效果()
+    {
+
+        for (int i = 0; i < Panel_选择男女界面.transform.childCount; i++)
+        {
+            Panel_选择男女界面.transform.GetChild(i).GetComponent<Image>().DOFade(1, 0.5f);
+        }
+
+
+    }
+    public void 隐藏选择男女界面的动画效果()
+    {
+        for (int i = 0; i < Panel_选择男女界面.transform.childCount; i++)
+        {
+            Panel_选择男女界面.transform.GetChild(i).GetComponent<Image>().DOFade(0, 0.5f);
+        }
+
+    }
+
+
+    public void 显示男装卡片界面的动画效果()
+    {
+        float F_缩放倍数 = 0.8f;
+        Panel_切换男装卡片界面.transform.GetChild(0).GetComponent<RectTransform>().DOScale(Vector2.one, 1f).SetEase(Ease.OutBack);
+        Panel_切换男装卡片界面.transform.GetChild(1).GetComponent<RectTransform>().DOScale(Vector2.one * F_缩放倍数, 1f).SetEase(Ease.OutBack);
+        Panel_切换男装卡片界面.transform.GetChild(2).GetComponent<RectTransform>().DOScale(Vector2.one * F_缩放倍数, 1f).SetEase(Ease.OutBack);
+        Panel_切换男装卡片界面.transform.GetChild(3).GetComponent<RectTransform>().DOScale(new Vector2(-1 * F_缩放倍数, 1 * F_缩放倍数), 1f).SetEase(Ease.OutBack);
+        Panel_切换男装卡片界面.transform.GetChild(4).GetComponent<RectTransform>().DOScale(Vector2.one * F_缩放倍数, 1f).SetEase(Ease.OutBack);
+
+
+        Bu_帽子低一点.GetComponent<RectTransform>().DOScale(1, 1);
+        Bu_帽子高一点.GetComponent<RectTransform>().DOScale(1, 1);
+        Bu_整体大一点.GetComponent<RectTransform>().DOScale(1, 1);
+        Bu_整体小一点.GetComponent<RectTransform>().DOScale(1, 1);
+
+        Ima_标题背景.GetComponent<RectTransform>().DOScale(1, 1);
+        Ima_警服介绍图1.GetComponent<RectTransform>().DOScale(1, 1);
+        Ima_警服介绍图2.GetComponent<RectTransform>().DOScale(1, 1);
+        Ima_警服介绍图3.GetComponent<RectTransform>().DOScale(1, 1);
+
+
+    }
+
+    public void 瞬隐男装卡片界面()
+    {
+
+
+        Panel_切换男装卡片界面.transform.GetChild(0).GetComponent<RectTransform>().DOKill();
+        Panel_切换男装卡片界面.transform.GetChild(1).GetComponent<RectTransform>().DOKill();
+        Panel_切换男装卡片界面.transform.GetChild(2).GetComponent<RectTransform>().DOKill();
+        Panel_切换男装卡片界面.transform.GetChild(3).GetComponent<RectTransform>().DOKill();
+        Panel_切换男装卡片界面.transform.GetChild(4).GetComponent<RectTransform>().DOKill();
+
+
+        Panel_切换男装卡片界面.transform.GetChild(0).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换男装卡片界面.transform.GetChild(1).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换男装卡片界面.transform.GetChild(2).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换男装卡片界面.transform.GetChild(3).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换男装卡片界面.transform.GetChild(4).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+
+
+        Bu_帽子低一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Bu_帽子高一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Bu_整体大一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Bu_整体小一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+
+        Ima_标题背景.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Ima_警服介绍图1.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Ima_警服介绍图2.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Ima_警服介绍图3.GetComponent<RectTransform>().DOScale(0, 0.3f);
+
+
+    }
+
+
+    public void 显示女装卡片界面的动画效果()
+    {
+        float F_缩放倍数 = 0.8f;
+
+        Panel_切换女装卡片界面.transform.GetChild(0).GetComponent<RectTransform>().DOScale(Vector2.one, 1f).SetEase(Ease.OutBack);
+        Panel_切换女装卡片界面.transform.GetChild(1).GetComponent<RectTransform>().DOScale(Vector2.one * F_缩放倍数, 1f).SetEase(Ease.OutBack);
+        Panel_切换女装卡片界面.transform.GetChild(2).GetComponent<RectTransform>().DOScale(Vector2.one * F_缩放倍数, 1f).SetEase(Ease.OutBack);
+        Panel_切换女装卡片界面.transform.GetChild(3).GetComponent<RectTransform>().DOScale(new Vector2(-1 * F_缩放倍数, 1 * F_缩放倍数), 1f).SetEase(Ease.OutBack);
+        Panel_切换女装卡片界面.transform.GetChild(4).GetComponent<RectTransform>().DOScale(Vector2.one * F_缩放倍数, 1f).SetEase(Ease.OutBack);
+
+
+        Bu_帽子低一点.GetComponent<RectTransform>().DOScale(1, 1);
+        Bu_帽子高一点.GetComponent<RectTransform>().DOScale(1, 1);
+        Bu_整体大一点.GetComponent<RectTransform>().DOScale(1, 1);
+        Bu_整体小一点.GetComponent<RectTransform>().DOScale(1, 1);
+
+        Ima_标题背景.GetComponent<RectTransform>().DOScale(1, 1);
+        Ima_警服介绍图1.GetComponent<RectTransform>().DOScale(1, 1);
+        Ima_警服介绍图2.GetComponent<RectTransform>().DOScale(1, 1);
+        Ima_警服介绍图3.GetComponent<RectTransform>().DOScale(1, 1);
+
+    }
+
+    public void 瞬隐女装卡片界面()
+    {
+
+        Panel_切换女装卡片界面.transform.GetChild(0).GetComponent<RectTransform>().DOKill();
+        Panel_切换女装卡片界面.transform.GetChild(1).GetComponent<RectTransform>().DOKill();
+        Panel_切换女装卡片界面.transform.GetChild(2).GetComponent<RectTransform>().DOKill();
+        Panel_切换女装卡片界面.transform.GetChild(3).GetComponent<RectTransform>().DOKill();
+        Panel_切换女装卡片界面.transform.GetChild(4).GetComponent<RectTransform>().DOKill();
+
+
+        Panel_切换女装卡片界面.transform.GetChild(0).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换女装卡片界面.transform.GetChild(1).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换女装卡片界面.transform.GetChild(2).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换女装卡片界面.transform.GetChild(3).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+        Panel_切换女装卡片界面.transform.GetChild(4).GetComponent<RectTransform>().DOScale(Vector2.zero, 0f);
+
+
+        Bu_帽子低一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Bu_帽子高一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Bu_整体大一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Bu_整体小一点.GetComponent<RectTransform>().DOScale(0, 0.3f);
+
+        Ima_标题背景.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Ima_警服介绍图1.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Ima_警服介绍图2.GetComponent<RectTransform>().DOScale(0, 0.3f);
+        Ima_警服介绍图3.GetComponent<RectTransform>().DOScale(0, 0.3f);
+
+    }
+
+
+    public void 重置切换男装卡片界面和模型()
+    {
+       StartCoroutine("IE_重置切换男装卡片界面和模型");
+       
+      
+    }
+    IEnumerator IE_重置切换男装卡片界面和模型()
+    {
+        Panel_切换男装卡片界面.GetComponent<ChangeCard>().Int_被选中第X个卡片 = 1;
+        Panel_切换男装卡片界面.GetComponent<ChangeCard>().卡片瞬间到选中某个卡片的状态();
+        kinectManager.GetComponent<ModelSelector>().OnDressingItemSelected(0);
+        yield return new WaitForSeconds(0.1F);
+        kinectManager.GetComponent<ModelSelector>().selected = -1;
+        kinectManager.GetComponent<ModelSelector>().SelectNextModel();
+    }
+    public void 重置切换女装卡片界面和模型()
+    {
+        StartCoroutine("IE_重置切换女装卡片界面和模型");
+   
+    }
+    IEnumerator IE_重置切换女装卡片界面和模型()
+    {
+        Panel_切换女装卡片界面.GetComponent<ChangeCard>().Int_被选中第X个卡片 = 1;
+        Panel_切换女装卡片界面.GetComponent<ChangeCard>().卡片瞬间到选中某个卡片的状态();
+        kinectManager.GetComponent<ModelSelector>().OnDressingItemSelected(7);
+        yield return new WaitForSeconds(0.1F);
+        kinectManager.GetComponent<ModelSelector>().selected = 7;
+        kinectManager.GetComponent<ModelSelector>().SelectNextModel();
+    }
+
+    public void 显示生成的衣服和帽子出来的效果(int a)
+    {
+        float F_变化时长 = 0.3f;
+
+        for (int i = 0; i < G_帽子.transform.GetChild(1).childCount; i++)
+        {
+            G_帽子.transform.GetChild(1).GetChild(i).gameObject.SetActive(false);
+        }
+
+        G_帽子.transform.GetChild(1).GetChild(a).gameObject.SetActive(true);
+        G_帽子.transform.GetChild(1).DOScale(Vector3.zero, 0);
+        G_帽子.transform.GetChild(1).DOScale(Vector3.one * 1.33f, F_变化时长);
+
+        if (G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型)
+        {
+
+            G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型.transform.GetComponentInChildren<SkinnedMeshRenderer>().enabled = true;
+            G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型.transform.DOScale(Vector3.one * 0.1f, 0);
+            G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型.transform.DOScale(Vector3.one * 0.7f, F_变化时长);
+
+
+        }
+       
+    }
+    public void 瞬间隐藏生成的衣服和帽子模型()
+    {
+
+        G_帽子.transform.GetChild(1).DOScale(Vector3.zero, 0);
+
+        if (G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型)
+        {
+
+            G_KinectController.GetComponent<ModelSelector>().G_生成的衣服模型.transform.GetComponentInChildren<SkinnedMeshRenderer>().enabled = false;
+
+        }
+
+    }
+
+
+    public void 检测到人体靠近执行一次()
+    {
+        Panel_待机界面.GetComponent<Panel_DaiJi>().停止待机倒计时();
+        隐藏待机界面的动画效果();
+        显示位置校准界面的动画效果();
+    }
+
+    public void 追踪到人并建立用户后的逻辑()
+    {
+
+        Panel_待机界面.GetComponent<Panel_DaiJi>().停止待机倒计时();
+        隐藏待机界面的动画效果();
+        隐藏位置校准界面的动画效果();
+        瞬间隐藏生成的衣服和帽子模型();
+        显示选择男女界面的动画效果();
+
+        enum_当前界面 = ENUM_当前界面.选择男女界面;
+        enum_选择的性别 = ENUM_选择的性别.无;
+    }
+
+    public void 丢失用户执行一次()
+    {
+
+        定位到位置校准界面();
+        Panel_待机界面.GetComponent<Panel_DaiJi>().重新开始待机倒计时();
+        关闭点击按钮功能();
+        F_服装整体缩放系数_实时 = 1.08f;
+        F_帽子高度_实时 = F_帽子初始高度;
+        G_帽子.transform.GetChild(1).transform.DOLocalMoveY(F_帽子初始高度, 0);
+
+    }
+
+
+    //仅在选择男女界面有效
+    public void 举起右手执行一次()
+    {
+        if (enum_当前界面 == ENUM_当前界面.选择男女界面)
+        {
+            enum_选择的性别 = ENUM_选择的性别.女;
+            enum_当前界面 = ENUM_当前界面.切换衣服卡片界面;
+            隐藏选择男女界面的动画效果();
+            显示女装卡片界面的动画效果();
+            重置切换女装卡片界面和模型();
+            显示生成的衣服和帽子出来的效果(8);
+            打开点击按钮功能();
+        }
+
+
+    }
+
+    //仅在选择男女界面有效
+    public void 举起左手执行一次()
+    {
+        if (enum_当前界面 == ENUM_当前界面.选择男女界面)
+        {
+            enum_选择的性别 = ENUM_选择的性别.男;
+            enum_当前界面 = ENUM_当前界面.切换衣服卡片界面;
+            隐藏选择男女界面的动画效果();
+            显示男装卡片界面的动画效果();
+            重置切换男装卡片界面和模型();
+            显示生成的衣服和帽子出来的效果(0);
+            打开点击按钮功能();
+        }
+    }
+
+    public void 右手往左摆动一次()
+    {
+        if (enum_当前界面 == ENUM_当前界面.切换衣服卡片界面)
+        {
+            if (enum_选择的性别 == ENUM_选择的性别.男)
+            {
+
+                Panel_切换男装卡片界面.GetComponent<ChangeCard>().下一张();
+                显示生成的衣服和帽子出来的效果(kinectManager.GetComponent<ModelSelector>().selected);
+
+            }
+            if (enum_选择的性别 == ENUM_选择的性别.女)
+            {
+
+                Panel_切换女装卡片界面.GetComponent<ChangeCard>().下一张();
+                显示生成的衣服和帽子出来的效果(kinectManager.GetComponent<ModelSelector>().selected);
+
+            }
+
+        }
+
+    }
+
+    public void 左手往右摆动一次()
+    {
+        if (enum_当前界面 == ENUM_当前界面.切换衣服卡片界面)
+        {
+            if (enum_选择的性别 == ENUM_选择的性别.男)
+            {
+                Panel_切换男装卡片界面.GetComponent<ChangeCard>().上一张();
+                显示生成的衣服和帽子出来的效果(kinectManager.GetComponent<ModelSelector>().selected);
+
+            }
+            if (enum_选择的性别 == ENUM_选择的性别.女)
+            {
+                Panel_切换女装卡片界面.GetComponent<ChangeCard>().上一张();
+                显示生成的衣服和帽子出来的效果(kinectManager.GetComponent<ModelSelector>().selected);
+
+            }
+
+        }
+    }
+
+    public void 显示用户距离()
+    {
+        if (kinectManager != null)
+        {
+            text_显示前后距离.text = "前后" + kinectManager.F_当前用户前后的距离.ToString();
+            text_显示左右距离.text = "左右" + kinectManager.F_当前用户左右的距离.ToString();
+
+        }
+        else
+        {
+            text_显示前后距离.text = "xxxx";
+        }
+    }
+
+    public void 打开点击按钮功能()
+    {
+        if (kinectManager != null)
+        {
+            kinectManager.GetComponent<InteractionManager>().allowHandClicks = true;
+        }
+    }
+
+    public void 关闭点击按钮功能()
+    {
+        if (kinectManager != null)
+        {
+            kinectManager.GetComponent<InteractionManager>().allowHandClicks = false;
+        }
+    }
+
+    public void ButtonClick_裤子长一点()
+    {
+        if (kinectManager.GetComponent<ModelSelector>().legScaleFactor < 1.1f)
+        {
+            kinectManager.GetComponent<ModelSelector>().legScaleFactor += 0.03f;
+
+        }
+    }
+
+    public void ButtonClick_裤子短一点()
+    {
+        if (kinectManager.GetComponent<ModelSelector>().legScaleFactor > 0.8f)
+        {
+            kinectManager.GetComponent<ModelSelector>().legScaleFactor -= 0.03f;
+
+        }
+    }
+
+    public void ButtonClick_整体肥大一点()
+    {
+
+        F_服装整体缩放系数_实时 += 0.04f;
+
+    }
+
+    public void ButtonClick_整体瘦一点()
+    {
+
+        F_服装整体缩放系数_实时 -= 0.04f;
+
+    }
+
+    public void ButtonClick_帽子高一点()
+    {
+
+        F_帽子高度_实时 += 0.02f;
+        G_帽子.transform.GetChild(1).transform.DOLocalMoveY(F_帽子高度_实时, 0.5F);
+    }
+    public void ButtonClick_帽子低一点()
+    {
+
+        F_帽子高度_实时 -= 0.02f;
+        G_帽子.transform.GetChild(1).transform.DOLocalMoveY(F_帽子高度_实时, 0.5F);
+    }
+
+
+
+}
