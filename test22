@@ -1,217 +1,804 @@
 using UnityEngine;
 using System.Collections;
-using System.Collections.Generic;
-using DG.Tweening;
-public class CameraController_Touch_Mouse : MonoBehaviour
+
+/// <summary>
+/// Avatar scaler is the component that scales avatar's body, according to body measures of the user.
+/// </summary>
+[RequireComponent(typeof(Animator))]
+public class AvatarScaler : MonoBehaviour 
 {
 
-    [Header("摄像机围绕的目标物体")] public Transform T_target1;
-    [Header("目标点距离相机的当前距离")] public float F_目标点与相机的当前距离;
-    [Header("目标点与摄像机的最小距离")] public float F_目标点与相机的最小距离 = 30f;
-    [Header("目标点与摄像机的最大距离")] public float F_目标点与相机的最大距离 = 300f;
-    [Header("目标点与摄像机的初始距离")] public float F_目标点与相机的初始距离 = 60f;
-    [Header("旋转速度")] public float F_拖动相机时的旋转速度 = 200.0f;
-    [Header("缩放速度")] public float F_缩放相机视角时的速度 = 2f;
-    [Header("阻尼值(数值越大效果越明显)")] public float F_阻尼值 = 0.2f;
+	[Tooltip("Index of the player, tracked by this component. 0 means the 1st player, 1 - the 2nd one, 2 - the 3rd one, etc.")]
+	public int playerIndex = 0;
 
-    [Header("Y轴最小倾斜角度")] public float F_Y轴最小倾斜角度 = -20f;
-    [Header("Y轴最大倾斜角度")] public float F_Y轴最大倾斜角度 = 80f;
-    [Header("初始Y轴旋转角度")] public float F_Y轴初始值 = 180;
-    [Header("初始X轴旋转角度")] public float F_X轴初始值 = 0;
-    [Header("是否允许平滑效果")] public bool Is_允许平滑效果 = true;
-    [Header("是否允许控制相机")] public bool Is_允许控制相机 = false;
-    [Header("是否允许Y轴倾斜")] private bool Is_允许Y轴倾斜 = true;
+	[Tooltip("Whether the avatar is facing the player or not.")]
+	public bool mirroredAvatar = false;
+
+	[Tooltip("Minimum distance to the user.")]
+	public float minUserDistance = 1.5f;
+
+	[Tooltip("Body scale factor (incl. arms and legs) that may be used for fine tuning of model-scale.")]
+	[Range(0.0f, 2.0f)]
+	public float bodyScaleFactor = 1.0f;
+
+	[Tooltip("Body width scale factor that may be used for fine tuning of model-width scale.")]
+	[Range(0.0f, 2.0f)]
+	public float bodyWidthFactor = 1.0f;
+
+	[Tooltip("Additional scale factor for arms that may be used for fine tuning of model arm-scale.")]
+	[Range(0.0f, 2.0f)]
+	public float armScaleFactor = 1.0f;
+
+	[Tooltip("Additional scale factor for legs that may be used for fine tuning of model leg-scale.")]
+	[Range(0.0f, 2.0f)]
+	public float legScaleFactor = 1.0f;
+	
+	[Tooltip("Whether the scale is updated continuously or just after the calibration pose.")]
+	public bool continuousScaling = true;
+	
+	[Tooltip("Scale smoothing factor used in case of continuous scaling.")]
+	public float smoothFactor = 5f;
+
+	[Tooltip("Camera used to overlay the model over the background.")]
+	public Camera foregroundCamera;
+
+	[Tooltip("Plane used to render the color camera background to overlay.")]
+	public Transform backgroundPlane;
+
+//	[Tooltip("Whether to put the clothing model hip and shoulder joints where the user joints are.")]
+//	public bool fixModelHipsAndShoulders = false;
+
+	[Tooltip("UI-Text to display the avatar-scaler debug messages.")]
+	public UnityEngine.UI.Text debugText;
+	
+	// used by category selector
+	[System.NonSerialized]
+	public long currentUserId = 0;
+
+	// used by category selector
+	[System.NonSerialized]
+	public bool scalerInited = false;
+
+	// class references
+	private KinectManager kinectManager = null;
+	private AvatarController avtController = null;
+
+	// model transforms for scaling
+	private Transform bodyScaleTransform;
+	//private Transform bodyHipsTransform;
+	
+	private Transform leftShoulderScaleTransform;
+	private Transform leftElbowScaleTransform;
+	private Transform rightShoulderScaleTransform;
+	private Transform rightElbowScaleTransform;
+	private Transform leftHipScaleTransform;
+	private Transform leftKneeScaleTransform;
+	private Transform rightHipScaleTransform;
+	private Transform rightKneeScaleTransform;
+
+	private Vector3 modelBodyScale = Vector3.one;
+	private Vector3 modelLeftShoulderScale = Vector3.one;
+	private Vector3 modelLeftElbowScale = Vector3.one;
+	private Vector3 modelRightShoulderScale = Vector3.one; 
+	private Vector3 modelRightElbowScale = Vector3.one; 
+	private Vector3 modelLeftHipScale = Vector3.one; 
+	private Vector3 modelLeftKneeScale = Vector3.one; 
+	private Vector3 modelRightHipScale = Vector3.one;
+	private Vector3 modelRightKneeScale = Vector3.one;
+	
+	// model bone sizes and original scales
+	private float modelBodyHeight = 0f;
+	private float modelBodyWidth = 0f;
+	private float modelLeftUpperArmLength = 0f;
+	private float modelLeftLowerArmLength = 0f;
+	private float modelRightUpperArmLength = 0f;
+	private float modelRightLowerArmLength = 0f;
+	private float modelLeftUpperLegLength = 0f;
+	private float modelLeftLowerLegLength = 0f;
+	private float modelRightUpperLegLength = 0f;
+	private float modelRightLowerLegLength = 0f;
+	
+	// user bone sizes
+	private float userBodyHeight = 0f;
+	private float userBodyWidth = 0f;
+	private float leftUpperArmLength = 0f; 
+	private float leftLowerArmLength = 0f; 
+	private float rightUpperArmLength = 0f;
+	private float rightLowerArmLength = 0f;
+	private float leftUpperLegLength = 0f; 
+	private float leftLowerLegLength = 0f; 
+	private float rightUpperLegLength = 0f;
+	private float rightLowerLegLength = 0f;
+
+	// user bone scale factors
+	private float fScaleBodyHeight = 0f;
+	private float fScaleBodyWidth = 0f;
+	private float fScaleLeftUpperArm = 0f;
+	private float fScaleLeftLowerArm = 0f;
+	private float fScaleRightUpperArm = 0f;
+	private float fScaleRightLowerArm = 0f;
+	private float fScaleLeftUpperLeg = 0f;
+	private float fScaleLeftLowerLeg = 0f;
+	private float fScaleRightUpperLeg = 0f;
+	private float fScaleRightLowerLeg = 0f;
+
+	// background plane rectangle
+	private Rect planeRect = new Rect();
+	private bool planeRectSet = false;
+
+    // user body lengths
+    private bool gotUserBodySize = false;
+    private bool gotUserArmsSize = false;
+    private bool gotUserLegsSize = false;
+
+    // mesh renderer
+    private SkinnedMeshRenderer meshRenderer = null;
+
+	GUIStyle ss;
+    public void Start () 
+	{
 
 
+        ss = new GUIStyle();
+        ss.normal.background = null;//背景图片 texture格式
+        ss.normal.textColor = Color.red;//字体颜色
+        ss.fontSize = 60;//字体大小
+                         // get references to other components
+        kinectManager = KinectManager.Instance;
+		avtController = gameObject.GetComponent<AvatarController>();
 
-    float xPoint = 0f;   //X轴坐标
-    float yPoint = 0.0f;  //Y轴坐标
-    float xTargetPoint = 0f;  //目标X轴坐标
-    float yTargetPoint = 0f; //目标Y轴坐标
-    float xVelocityPoint = 1f;  //X水平轴坐标
-    float yVelocityPoint = 1f; //Y水平轴坐标
-    float zoomVelocity;  //产出值 (临时用)
-    Vector3 pivotOffset = new Vector3(0, 0, 0); //位置偏移
-    float F_目标点距离相机的平滑距离;
-    float F_远视角的距离 = 600;
+		// get model transforms
+		Animator animatorComponent = GetComponent<Animator>();
+		AvatarController avatarController = GetComponent<AvatarController>();
 
-    void Start()
-    {
-        初始化();
-        相机瞬移到某位置();
-        StartCoroutine("IE_视角拉近到某一点", "原点");
-    }
+        // get mesh renderer
+        meshRenderer = GetComponentInChildren<SkinnedMeshRenderer>();
 
-    void Update()
-    {
+        // use the root transform for body scale
+        bodyScaleTransform = transform;
 
-        if (xTargetPoint >= 180) { xTargetPoint -= 360; }
-        xTargetPoint = Mathf.Repeat(xTargetPoint, 360);
-     
-    }
+		if (animatorComponent && animatorComponent.GetBoneTransform (HumanBodyBones.Hips)) 
+		{
+			//bodyHipsTransform = animatorComponent.GetBoneTransform (HumanBodyBones.Hips);
 
-    void LateUpdate()
-    {
+			leftShoulderScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.LeftUpperArm);
+			leftElbowScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.LeftLowerArm);
+			rightShoulderScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.RightUpperArm);
+			rightElbowScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.RightLowerArm);
 
-        if (Is_允许控制相机)
-        {
-            // 手指触摸控制
-            if (Input.touchCount > 0)
-            {
+			leftHipScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.LeftUpperLeg);
+			leftKneeScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.LeftLowerLeg);
+			rightHipScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.RightUpperLeg);
+			rightKneeScaleTransform = animatorComponent.GetBoneTransform (HumanBodyBones.RightLowerLeg);
+		} 
+		else if (avatarController) 
+		{
+			//bodyHipsTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.SpineBase, false));
 
-                Touch touch = Input.GetTouch(0);
+			leftShoulderScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.ShoulderLeft, false));
+			leftElbowScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.ElbowLeft, false));
+			rightShoulderScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.ShoulderRight, false));
+			rightElbowScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.ElbowRight, false));
 
-                // Handle pinch to zoom
-                if (Input.touchCount == 2)
-                {
-                    Touch touch1 = Input.GetTouch(0);
-                    Touch touch2 = Input.GetTouch(1);
+			leftHipScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.HipLeft, false));
+			leftKneeScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.KneeLeft, false));
+			rightHipScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.HipRight, false));
+			rightKneeScaleTransform = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.KneeRight, false));
+		} 
+		else 
+		{
+			// needed transforms could not be found
+			return;
+		}
 
-                    Vector2 touch1PrevPos = touch1.position - touch1.deltaPosition;
-                    Vector2 touch2PrevPos = touch2.position - touch2.deltaPosition;
+		// get model bone scales
+		modelBodyScale = bodyScaleTransform ? bodyScaleTransform.localScale : Vector3.one;
 
-                    float prevTouchDeltaMag = (touch1PrevPos - touch2PrevPos).magnitude;
-                    float touchDeltaMag = (touch1.position - touch2.position).magnitude;
+		//print(modelBodyScale);
+		modelLeftShoulderScale = leftShoulderScaleTransform ? leftShoulderScaleTransform.localScale : Vector3.one;
+		modelLeftElbowScale = leftElbowScaleTransform ? leftElbowScaleTransform.localScale : Vector3.one;
+		modelRightShoulderScale = rightShoulderScaleTransform ? rightShoulderScaleTransform.localScale : Vector3.one;
+		modelRightElbowScale = rightElbowScaleTransform ? rightElbowScaleTransform.localScale : Vector3.one;
 
-                    float deltaMagnitudeDiff = prevTouchDeltaMag - touchDeltaMag;
+		modelLeftHipScale = leftHipScaleTransform ? leftHipScaleTransform.localScale : Vector3.one;
+		modelLeftKneeScale = leftKneeScaleTransform ? leftKneeScaleTransform.localScale : Vector3.one;
+		modelRightHipScale = rightHipScaleTransform ? rightHipScaleTransform.localScale : Vector3.one;
+		modelRightKneeScale = rightKneeScaleTransform ? rightKneeScaleTransform.localScale : Vector3.one;
 
-                    F_目标点与相机的当前距离 += deltaMagnitudeDiff * F_缩放相机视角时的速度 * 0.05f;
-                }
+		if (animatorComponent && animatorComponent.GetBoneTransform (HumanBodyBones.Hips)) 
+		{
+			GetModelBodyHeight(animatorComponent, ref modelBodyHeight, ref modelBodyWidth);
+			//Debug.Log (string.Format("MW: {0:F3}, MH: {1:F3}", modelBodyWidth, modelBodyHeight));
 
-                // Handle rotation
-                else if (touch.phase == TouchPhase.Moved)
-                { 
-                    xTargetPoint += touch.deltaPosition.x * F_拖动相机时的旋转速度 * 0.025f * 0.05f;
-                    if (Is_允许Y轴倾斜)
+			GetModelBoneLength(animatorComponent, HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, ref modelLeftUpperArmLength);
+			GetModelBoneLength(animatorComponent, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand, ref modelLeftLowerArmLength);
+			GetModelBoneLength(animatorComponent, HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, ref modelRightUpperArmLength);
+			GetModelBoneLength(animatorComponent, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand, ref modelRightLowerArmLength);
+
+			GetModelBoneLength(animatorComponent, HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg, ref modelLeftUpperLegLength);
+			GetModelBoneLength(animatorComponent, HumanBodyBones.LeftLowerLeg, HumanBodyBones.LeftFoot, ref modelLeftLowerLegLength);
+			GetModelBoneLength(animatorComponent, HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg, ref modelRightUpperLegLength);
+			GetModelBoneLength(animatorComponent, HumanBodyBones.RightLowerLeg, HumanBodyBones.RightFoot, ref modelRightLowerLegLength);
+
+			scalerInited = true;
+		}
+		else if (avatarController) 
+		{
+			GetModelBodyHeight(avatarController, ref modelBodyHeight, ref modelBodyWidth);
+			//Debug.Log (string.Format("MW: {0:F3}, MH: {1:F3}", modelBodyWidth, modelBodyHeight));
+
+			GetModelBoneLength(avatarController, KinectInterop.JointType.ShoulderLeft, KinectInterop.JointType.ElbowLeft, ref modelLeftUpperArmLength);
+			GetModelBoneLength(avatarController, KinectInterop.JointType.ElbowLeft, KinectInterop.JointType.WristLeft, ref modelLeftLowerArmLength);
+			GetModelBoneLength(avatarController, KinectInterop.JointType.ShoulderRight, KinectInterop.JointType.ElbowRight, ref modelRightUpperArmLength);
+			GetModelBoneLength(avatarController, KinectInterop.JointType.ElbowRight, KinectInterop.JointType.WristRight, ref modelRightLowerArmLength);
+
+			GetModelBoneLength(avatarController, KinectInterop.JointType.HipLeft, KinectInterop.JointType.KneeLeft, ref modelLeftUpperLegLength);
+			GetModelBoneLength(avatarController, KinectInterop.JointType.KneeLeft, KinectInterop.JointType.AnkleLeft, ref modelLeftLowerLegLength);
+			GetModelBoneLength(avatarController, KinectInterop.JointType.HipRight, KinectInterop.JointType.KneeRight, ref modelRightUpperLegLength);
+			GetModelBoneLength(avatarController, KinectInterop.JointType.KneeRight, KinectInterop.JointType.AnkleRight, ref modelRightLowerLegLength);
+
+			scalerInited = true;
+		}
+	}
+	
+	void Update () 
+	{
+		if (scalerInited && kinectManager && kinectManager.IsInitialized()) 
+		{
+			// get the plane rectangle to be used for object overlay
+			if (backgroundPlane && !planeRectSet) 
+			{
+				planeRectSet = true;
+
+				planeRect.width = 10f * Mathf.Abs(backgroundPlane.localScale.x);
+				planeRect.height = 10f * Mathf.Abs(backgroundPlane.localScale.z);
+				planeRect.x = backgroundPlane.position.x - planeRect.width / 2f;
+				planeRect.y = backgroundPlane.position.y - planeRect.height / 2f;
+			}
+
+			long userId = kinectManager.GetUserIdByIndex(playerIndex);
+
+			// check user distance and hand positions
+			if (userId != 0 && minUserDistance > 0f) 
+			{
+				Vector3 userPos = kinectManager.GetUserPosition(userId);
+
+				//bool lHandTracked = kinectManager.IsJointTracked(userId, (int)KinectInterop.JointType.WristLeft);
+				//Vector3 lHandPos = lHandTracked ? kinectManager.GetJointPosition(userId, (int)KinectInterop.JointType.WristLeft) : Vector3.zero;
+
+				//bool rHandTracked = kinectManager.IsJointTracked(userId, (int)KinectInterop.JointType.WristRight);
+				//Vector3 rHandPos = rHandTracked ? kinectManager.GetJointPosition(userId, (int)KinectInterop.JointType.WristRight) : Vector3.zero;
+
+				if (userPos.z < minUserDistance) // ||
+					//!lHandTracked || (lHandPos.z - userPos.z) <= -0.3f ||
+					//!rHandTracked || (rHandPos.z - userPos.z) <= -0.3f) 
+				{
+					// don't scale the model
+					userId = 0;
+					//Debug.Log ("Avatar scaling skipped.");
+				}
+
+			}
+
+			if (userId != currentUserId) 
+			{
+				currentUserId = userId;
+
+				if (userId != 0) 
+				{
+					GetUserBodySize (true, true, true);
+
+//					if (fixModelHipsAndShoulders)
+//						FixJointsBeforeScale();
+
+                    if (gotUserBodySize)
                     {
-                        yTargetPoint -= touch.deltaPosition.y * F_拖动相机时的旋转速度 * 0.025f * 0.05f;
-                        yTargetPoint = ClampAngle(yTargetPoint, F_Y轴最小倾斜角度, F_Y轴最大倾斜角度);
+                        // show the mesh
+                      //  if (meshRenderer && !meshRenderer.gameObject.activeSelf)
+                            meshRenderer.gameObject.SetActive(true);
+						
+                        // scale avatar initially
+                        ScaleAvatar(0f, true);
+					//	print("ssss");
+                    }
+                    else
+                    {
+                        // hide the mesh
+                        if (meshRenderer && meshRenderer.gameObject.activeSelf)
+                          //  meshRenderer.gameObject.SetActive(false);    测试——注释了
+
+                        // consider the user as not tracked
+                        currentUserId = 0;
                     }
                 }
-            }
-            else
-            {
-
-                // 鼠标控制
-                var scroll = Input.GetAxis("Mouse ScrollWheel");
-                if (scroll > 0.0f) F_目标点与相机的当前距离 -= F_缩放相机视角时的速度 * 2;
-                else if (scroll < 0.0f) { F_目标点与相机的当前距离 += F_缩放相机视角时的速度 * 2; }
-
-                if (Input.GetMouseButton(0))
+                else
                 {
-                    xTargetPoint += Input.GetAxis("Mouse X") * F_拖动相机时的旋转速度 * 0.025f;
-                    if (Is_允许Y轴倾斜)
-                    {
-                        yTargetPoint -= Input.GetAxis("Mouse Y") * F_拖动相机时的旋转速度 * 0.025f;
-                        yTargetPoint = ClampAngle(yTargetPoint, F_Y轴最小倾斜角度, F_Y轴最大倾斜角度);
-                    }
+                    // user not tracked
+                    gotUserBodySize = gotUserArmsSize = gotUserLegsSize = false;
                 }
             }
         }
-        // 限制距离在最大最小值内
-        F_目标点与相机的当前距离 = Mathf.Clamp(F_目标点与相机的当前距离, F_目标点与相机的最小距离, F_目标点与相机的最大距离);
 
-        if (Is_允许平滑效果)
-        {
-            xPoint = Mathf.SmoothDampAngle(xPoint, xTargetPoint, ref xVelocityPoint, F_阻尼值);
-            yPoint = Is_允许Y轴倾斜 ? Mathf.SmoothDampAngle(yPoint, yTargetPoint, ref yVelocityPoint, F_阻尼值) : yTargetPoint;
-            Quaternion rotation = Quaternion.Euler(yPoint, xPoint, 0);
-            F_目标点距离相机的平滑距离 = Mathf.SmoothDamp(F_目标点距离相机的平滑距离, F_目标点与相机的当前距离, ref zoomVelocity, F_阻尼值);
-            Vector3 position = rotation * new Vector3(0.0f, 0.0f, -F_目标点距离相机的平滑距离) + T_target1.position + pivotOffset;
-            transform.position = position;
-            transform.rotation = rotation;
+        if (currentUserId != 0 && continuousScaling)
+		{
+			//print(continuousScaling);
+            // scale avatar continuously
+            GetUserBodySize(true, true, true);
+			ScaleAvatar(smoothFactor, false);
+		}
+	}
+
+	// gets the the actual sizes of the user bones
+	public void GetUserBodySize(bool bBody, bool bArms, bool bLegs)
+	{
+		//KinectManager kinectManager = KinectManager.Instance;
+		if(kinectManager == null)
+			return;
+		
+		if(bBody)
+		{
+            gotUserBodySize = GetUserBodyHeight(kinectManager, bodyScaleFactor, bodyWidthFactor, ref userBodyHeight, ref userBodyWidth);
+		}
+		
+		if(bArms)
+		{
+            bool gotLeftArmSize = GetUserBoneLength(kinectManager, KinectInterop.JointType.ShoulderLeft, KinectInterop.JointType.ElbowLeft, armScaleFactor, ref leftUpperArmLength);
+            gotLeftArmSize &= GetUserBoneLength(kinectManager, KinectInterop.JointType.ElbowLeft, KinectInterop.JointType.WristLeft, armScaleFactor, ref leftLowerArmLength);
+            bool gotRightArmSize = GetUserBoneLength(kinectManager, KinectInterop.JointType.ShoulderRight, KinectInterop.JointType.ElbowRight, armScaleFactor, ref rightUpperArmLength);
+            gotRightArmSize &= GetUserBoneLength(kinectManager, KinectInterop.JointType.ElbowRight, KinectInterop.JointType.WristRight, armScaleFactor, ref rightLowerArmLength);
+
+            gotUserArmsSize = gotLeftArmSize | gotRightArmSize;
+            if (gotUserArmsSize)
+            {
+                EqualizeBoneLength(ref leftUpperArmLength, ref rightUpperArmLength);
+                EqualizeBoneLength(ref leftLowerArmLength, ref rightLowerArmLength);
+            }
         }
-        else
-        {
-            Quaternion rotation = Quaternion.Euler(yTargetPoint, xTargetPoint, 0);
-            Vector3 position = rotation * new Vector3(0.0f, 0.0f, -F_目标点与相机的当前距离) + T_target1.position + pivotOffset;
-            transform.position = position;
-            transform.rotation = rotation;
+		
+		if(bLegs)
+		{
+            bool gotLeftLegSize = GetUserBoneLength(kinectManager, KinectInterop.JointType.HipLeft, KinectInterop.JointType.KneeLeft, legScaleFactor, ref leftUpperLegLength);
+            gotLeftLegSize &= GetUserBoneLength(kinectManager, KinectInterop.JointType.KneeLeft, KinectInterop.JointType.AnkleLeft, legScaleFactor, ref leftLowerLegLength);
+            bool gotRightLegSize = GetUserBoneLength(kinectManager, KinectInterop.JointType.HipRight, KinectInterop.JointType.KneeRight, legScaleFactor, ref rightUpperLegLength);
+            gotRightLegSize &= GetUserBoneLength(kinectManager, KinectInterop.JointType.KneeRight, KinectInterop.JointType.AnkleRight, legScaleFactor, ref rightLowerLegLength);
+
+            gotUserLegsSize = gotLeftLegSize | gotRightLegSize;
+            if (gotUserLegsSize)
+            {
+                EqualizeBoneLength(ref leftUpperLegLength, ref rightUpperLegLength);
+                EqualizeBoneLength(ref leftLowerLegLength, ref rightLowerLegLength);
+            }
         }
+	}
+	
+	// scales the avatar as needed
+	public void ScaleAvatar(float fSmooth, bool bInitialScale)
+	{
+//		KinectManager manager = KinectManager.Instance;
+//		if(!manager)
+//			return;
+//		
+//		if(fSmooth != 0f && manager.IsUserTurnedAround(currentUserId))
+//			return;
 
+		// scale body
+		if (bodyScaleFactor > 0f && gotUserBodySize) 
+		{
+			//print(gotUserBodySize);
+//			SetupBoneScale(bodyScaleTransform, modelBodyScale, modelBodyHeight, 
+//			               userBodyHeight, 0f, fSmooth, ref fScaleBodyHeight);
+			SetupBodyScale(bodyScaleTransform, modelBodyScale, modelBodyHeight, modelBodyWidth, userBodyHeight, userBodyWidth, 
+				fSmooth, ref fScaleBodyHeight, ref fScaleBodyWidth);
 
+			if (avtController) 
+			{
+				// recalibrate avatar position due to transform scale change
+				avtController.offsetCalibrated = false;
 
-    }
+				// set AC smooth-factor to 0 to prevent flickering (r618-issue)
+				if (avtController.smoothFactor != 0f) 
+				{
+					avtController.smoothFactor = 0f;
+				}
+			}
+		}
 
-    public void 初始化()
+		// scale arms
+		if (/**bInitialScale &&*/ armScaleFactor > 0f && gotUserArmsSize) 
+		{
+			float fLeftUpperArmLength = !mirroredAvatar ? leftUpperArmLength : rightUpperArmLength;
+			SetupBoneScale(leftShoulderScaleTransform, modelLeftShoulderScale, modelLeftUpperArmLength, 
+				fLeftUpperArmLength, fScaleBodyHeight, fSmooth, ref fScaleLeftUpperArm);
+
+			float fLeftLowerArmLength = !mirroredAvatar ? leftLowerArmLength : rightLowerArmLength;
+			SetupBoneScale(leftElbowScaleTransform, modelLeftElbowScale, modelLeftLowerArmLength, 
+				fLeftLowerArmLength, fScaleLeftUpperArm, fSmooth, ref fScaleLeftLowerArm);
+
+			float fRightUpperArmLength = !mirroredAvatar ? rightUpperArmLength : leftUpperArmLength;
+			SetupBoneScale(rightShoulderScaleTransform, modelRightShoulderScale, modelRightUpperArmLength, 
+				fRightUpperArmLength, fScaleBodyHeight, fSmooth, ref fScaleRightUpperArm);
+
+			float fRightLowerArmLength = !mirroredAvatar ? rightLowerArmLength : leftLowerArmLength;
+			SetupBoneScale(rightElbowScaleTransform, modelRightElbowScale, modelLeftLowerArmLength, 
+				fRightLowerArmLength, fScaleRightUpperArm, fSmooth, ref fScaleRightLowerArm);
+		}
+
+		// scale legs
+		if (/**bInitialScale &&*/ legScaleFactor > 0 && gotUserLegsSize) 
+		{
+			float fLeftUpperLegLength = !mirroredAvatar ? leftUpperLegLength : rightUpperLegLength;
+			SetupBoneScale(leftHipScaleTransform, modelLeftHipScale, modelLeftUpperLegLength, 
+				fLeftUpperLegLength, fScaleBodyHeight, fSmooth, ref fScaleLeftUpperLeg);
+
+			float fLeftLowerLegLength = !mirroredAvatar ? leftLowerLegLength : rightLowerLegLength;
+			SetupBoneScale(leftKneeScaleTransform, modelLeftKneeScale, modelLeftLowerLegLength, 
+				fLeftLowerLegLength, fScaleLeftUpperLeg, fSmooth, ref fScaleLeftLowerLeg);
+
+			float fRightUpperLegLength = !mirroredAvatar ? rightUpperLegLength : leftUpperLegLength;
+			SetupBoneScale(rightHipScaleTransform, modelRightHipScale, modelRightUpperLegLength, 
+				fRightUpperLegLength, fScaleBodyHeight, fSmooth, ref fScaleRightUpperLeg);
+
+			float fRightLowerLegLength = !mirroredAvatar ? rightLowerLegLength : leftLowerLegLength;
+			SetupBoneScale(rightKneeScaleTransform, modelRightKneeScale, modelRightLowerLegLength, 
+				fRightLowerLegLength, fScaleRightUpperLeg, fSmooth, ref fScaleRightLowerLeg);
+		}
+
+		if(debugText != null)
+		{
+			string sDebug = string.Format("BW: {0:F2}/{1:F3}, BH: {2:F2}/{3:F3}\nLUA: {4:F3}, LLA: {5:F3}; RUA: {6:F3}, RLA: {7:F3}\nLUL: {8:F3}, LLL: {9:F3}; RUL: {10:F3}, RLL: {11:F3}",
+				                          userBodyWidth, fScaleBodyWidth, userBodyHeight, fScaleBodyHeight,
+			                              fScaleLeftUpperArm, fScaleLeftLowerArm,
+			                              fScaleRightUpperArm, fScaleRightLowerArm,
+			                              fScaleLeftUpperLeg, fScaleLeftLowerLeg,
+			                              fScaleRightUpperLeg, fScaleRightLowerLeg);
+			debugText.text = sDebug;
+		}
+		
+	}
+	
+	private bool GetModelBodyHeight(Animator animatorComponent, ref float height, ref float width)
+	{
+		height = 0f;
+		
+		if(animatorComponent)
+		{
+			//Transform hipCenter = animatorComponent.GetBoneTransform(HumanBodyBones.Hips);
+
+			Transform leftUpperArm = animatorComponent.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+			Transform rightUpperArm = animatorComponent.GetBoneTransform(HumanBodyBones.RightUpperArm);
+			
+			Transform leftUpperLeg = animatorComponent.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+			Transform rightUpperLeg = animatorComponent.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+			
+			if(leftUpperArm && rightUpperArm && leftUpperLeg && rightUpperLeg)
+			{
+				Vector3 posShoulderCenter = (leftUpperArm.position + rightUpperArm.position) / 2f;
+				Vector3 posHipCenter = (leftUpperLeg.position + rightUpperLeg.position) / 2f;  // hipCenter.position
+
+				//height = (posShoulderCenter.y - posHipCenter.y);
+				height = (posShoulderCenter - posHipCenter).magnitude;
+				width = (rightUpperArm.position - leftUpperArm.position).magnitude;
+				
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	private bool GetModelBodyHeight(AvatarController avatarController, ref float height, ref float width)
+	{
+		height = 0f;
+
+		if(avatarController)
+		{
+			Transform leftUpperArm = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.ShoulderLeft, false));
+			Transform rightUpperArm = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.ShoulderRight, false));
+
+			Transform leftUpperLeg = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.HipLeft, false));
+			Transform rightUpperLeg = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(KinectInterop.JointType.HipRight, false));
+
+			if(leftUpperArm && rightUpperArm && leftUpperLeg && rightUpperLeg)
+			{
+				Vector3 posShoulderCenter = (leftUpperArm.position + rightUpperArm.position) / 2f;
+				Vector3 posHipCenter = (leftUpperLeg.position + rightUpperLeg.position) / 2f;  // hipCenter.position
+
+				//height = (posShoulderCenter.y - posHipCenter.y);
+				height = (posShoulderCenter - posHipCenter).magnitude;
+				width = (rightUpperArm.position - leftUpperArm.position).magnitude;
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool GetModelBoneLength(Animator animatorComponent, HumanBodyBones baseJoint, HumanBodyBones endJoint, ref float length)
+	{
+		length = 0f;
+		
+		if(animatorComponent)
+		{
+			Transform joint1 = animatorComponent.GetBoneTransform(baseJoint);
+			Transform joint2 = animatorComponent.GetBoneTransform(endJoint);
+			
+			if(joint1 && joint2)
+			{
+				length = (joint2.position - joint1.position).magnitude;
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	private bool GetModelBoneLength(AvatarController avatarController, KinectInterop.JointType baseJoint, KinectInterop.JointType endJoint, ref float length)
+	{
+		length = 0f;
+
+		if(avatarController)
+		{
+			Transform joint1 = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(baseJoint, false));
+			Transform joint2 = avatarController.GetBoneTransform(avatarController.GetBoneIndexByJoint(endJoint, false));
+
+			if(joint1 && joint2)
+			{
+				length = (joint2.position - joint1.position).magnitude;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool GetUserBodyHeight(KinectManager manager, float scaleFactor, float widthFactor, ref float height, ref float width)
+	{
+		height = 0f;
+		width = 0f;
+
+		Vector3 posHipLeft = GetJointPosition(manager, (int)KinectInterop.JointType.HipLeft);
+		Vector3 posHipRight = GetJointPosition(manager, (int)KinectInterop.JointType.HipRight);
+		Vector3 posShoulderLeft = GetJointPosition(manager, (int)KinectInterop.JointType.ShoulderLeft);
+		Vector3 posShoulderRight = GetJointPosition(manager, (int)KinectInterop.JointType.ShoulderRight);
+
+		if(posHipLeft != Vector3.zero && posHipRight != Vector3.zero &&
+		   posShoulderLeft != Vector3.zero && posShoulderRight != Vector3.zero)
+		{
+			Vector3 posHipCenter = (posHipLeft + posHipRight) / 2f;
+			Vector3 posShoulderCenter = (posShoulderLeft + posShoulderRight) / 2f;
+			//height = (posShoulderCenter.y - posHipCenter.y) * scaleFactor;
+
+			height = (posShoulderCenter - posHipCenter).magnitude * scaleFactor;
+			width = (posShoulderRight - posShoulderLeft).magnitude * widthFactor;
+			
+			return true;
+		}
+
+		return false;
+	}
+	
+	private bool GetUserBoneLength(KinectManager manager, KinectInterop.JointType baseJoint, KinectInterop.JointType endJoint, float scaleFactor, ref float length)
+	{
+		length = 0f;
+		
+		Vector3 vPos1 = GetJointPosition(manager, (int)baseJoint);
+		Vector3 vPos2 = GetJointPosition(manager, (int)endJoint);
+		
+		if(vPos1 != Vector3.zero && vPos2 != Vector3.zero)
+		{
+			length = (vPos2 - vPos1).magnitude * scaleFactor;
+			return true;
+		}
+		
+		return false;
+	}
+
+	private void EqualizeBoneLength(ref float boneLen1, ref float boneLen2)
+	{
+		if(boneLen1 < boneLen2)
+		{
+			boneLen1 = boneLen2;
+		}
+		else
+		{
+			boneLen2 = boneLen1;
+		}
+	}
+
+	private bool SetupBodyScale(Transform scaleTrans, Vector3 modelBodyScale, float modelHeight, float modelWidth, float userHeight, float userWidth,
+		float fSmooth, ref float heightScale, ref float widthScale)
+	{
+
+	//	print(modelBodyScale);
+
+		if (modelHeight > 0f && userHeight > 0f)
+		{
+			heightScale = userHeight / modelHeight;
+		}
+
+		if (modelWidth > 0f && userWidth > 0f)
+		{
+			widthScale = userWidth / modelWidth;
+		}
+		else
+		{
+			widthScale = heightScale;
+		}
+
+		//print("heightscale=" + heightScale + "widthscale=" + widthScale);
+       // ALL_GO.INS.te11.text = "heightscale=" + heightScale + "widthscale=" + widthScale;
+       // ALL_GO.INS.te11.text = "userheight=" + userHeight + "userwidth=" + userWidth;
+
+        if (scaleTrans && heightScale > 0f && widthScale > 0f)
+		{
+			
+			float depthScale = heightScale; // (heightScale + widthScale) / 2f;
+          	Vector3 newLocalScale = new Vector3(modelBodyScale.x * widthScale * ALL_GO.INS.F_服装整体缩放系数_实时 , modelBodyScale.y * heightScale * ALL_GO.INS.F_服装整体缩放系数_实时*1.04f, modelBodyScale.z * depthScale * ALL_GO.INS.F_服装整体缩放系数_实时);
+           // Vector3 newLocalScale = new Vector3(modelBodyScale.x * widthScale* (ALL_GO.INS.F_服装整体缩放系数_实时*1.05f), modelBodyScale.y * heightScale * (ALL_GO.INS.F_服装整体缩放系数_实时*0.95f), modelBodyScale.z * depthScale * ALL_GO.INS.F_服装整体缩放系数_实时);
+			//ALL_GO.INS.te11.text = newLocalScale.ToString();
+
+            if (fSmooth != 0f)
+			{
+
+                scaleTrans.localScale = Vector3.Lerp(scaleTrans.localScale, newLocalScale, fSmooth * Time.deltaTime);
+
+            }
+			else
+			{
+                scaleTrans.localScale = newLocalScale;
+            }
+
+			//print(scaleTrans.localScale);
+
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool SetupBoneScale(Transform scaleTrans, Vector3 modelBoneScale, float modelBoneLen, float userBoneLen, float parentScale, float fSmooth, ref float boneScale)
+	{
+		if(modelBoneLen > 0f && userBoneLen > 0f)
+		{
+			boneScale = userBoneLen / modelBoneLen;
+		}
+
+		float localScale = boneScale;
+		if(boneScale > 0f && parentScale > 0f)
+		{
+			localScale = boneScale / parentScale;
+		}
+		
+		if(scaleTrans && localScale > 0f)
+		{
+			if(fSmooth != 0f)
+				scaleTrans.localScale = Vector3.Lerp(scaleTrans.localScale, modelBoneScale * localScale, fSmooth * Time.deltaTime);
+			else
+				scaleTrans.localScale = modelBoneScale * localScale;
+
+			return true;
+		}
+
+		return false;
+	}
+
+	public bool FixJointsBeforeScale()
+	{
+		Animator animatorComponent = GetComponent<Animator>();
+		KinectManager manager = KinectManager.Instance;
+
+		if(animatorComponent && modelBodyHeight > 0f && userBodyHeight > 0f)
+		{
+			Transform hipCenter = animatorComponent.GetBoneTransform(HumanBodyBones.Hips);
+			if((hipCenter.localScale - Vector3.one).magnitude > 0.01f)
+				return false;
+
+			Transform leftUpperLeg = animatorComponent.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+			Transform rightUpperLeg = animatorComponent.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+			
+			Transform leftUpperArm = animatorComponent.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+			Transform rightUpperArm = animatorComponent.GetBoneTransform(HumanBodyBones.RightUpperArm);
+			
+			if(leftUpperArm && rightUpperArm && leftUpperLeg && rightUpperLeg)
+			{
+				Vector3 posHipCenter = GetJointPosition(manager, (int)KinectInterop.JointType.SpineBase);
+				
+				Vector3 posHipLeft = GetJointPosition(manager, (int)KinectInterop.JointType.HipLeft);
+				Vector3 posHipRight = GetJointPosition(manager, (int)KinectInterop.JointType.HipRight);
+				
+				Vector3 posShoulderLeft = GetJointPosition(manager, (int)KinectInterop.JointType.ShoulderLeft);
+				Vector3 posShoulderRight = GetJointPosition(manager, (int)KinectInterop.JointType.ShoulderRight);
+				
+				if(posHipCenter != Vector3.zero && posHipLeft != Vector3.zero && posHipRight != Vector3.zero &&
+				   posShoulderLeft != Vector3.zero && posShoulderRight != Vector3.zero)
+				{
+					SetupUnscaledJoint(hipCenter, leftUpperLeg, posHipCenter, (!mirroredAvatar ? posHipLeft : posHipRight), modelBodyHeight, userBodyHeight);
+					SetupUnscaledJoint(hipCenter, rightUpperLeg, posHipCenter, (!mirroredAvatar ? posHipRight : posHipLeft), modelBodyHeight, userBodyHeight);
+
+					SetupUnscaledJoint(hipCenter, leftUpperArm, posHipCenter, (!mirroredAvatar ? posShoulderLeft : posShoulderRight), modelBodyHeight, userBodyHeight);
+					SetupUnscaledJoint(hipCenter, rightUpperArm, posHipCenter, (!mirroredAvatar ? posShoulderRight : posShoulderLeft), modelBodyHeight, userBodyHeight);
+
+					// recalculate model joints
+					Start();
+
+					return true;
+				}
+			}
+		}
+		
+		return false;
+	}
+
+	// gets the joint position in space
+	private Vector3 GetJointPosition(KinectManager manager, int joint)
+	{
+		Vector3 vPosJoint = Vector3.zero;
+
+		if(manager.IsJointTracked(currentUserId, joint))
+		{
+			if(backgroundPlane && planeRectSet)
+			{
+				// get the plane overlay position
+				vPosJoint = manager.GetJointPosColorOverlay(currentUserId, joint, planeRect);
+				vPosJoint.z = backgroundPlane.position.z;
+			}	
+			else if(foregroundCamera)
+			{
+				// get the background rectangle (use the portrait background, if available)
+				Rect backgroundRect = foregroundCamera.pixelRect;
+				PortraitBackground portraitBack = PortraitBackground.Instance;
+				
+				if(portraitBack && portraitBack.enabled)
+				{
+					backgroundRect = portraitBack.GetBackgroundRect();
+				}
+
+				// get the color overlay position
+				vPosJoint = manager.GetJointPosColorOverlay(currentUserId, joint, foregroundCamera, backgroundRect);
+			}
+
+//			else
+			if(vPosJoint == Vector3.zero)
+			{
+				vPosJoint = manager.GetJointPosition(currentUserId, joint);
+			}
+		}
+
+		return vPosJoint;
+	}
+
+	// sets the joint position before scaling
+	private bool SetupUnscaledJoint(Transform hipCenter, Transform joint, Vector3 posHipCenter, Vector3 posJoint, float modelBoneLen, float userBoneLen)
+	{
+		float boneScale = 0f;
+
+		if(modelBoneLen > 0f && userBoneLen > 0f)
+		{
+			boneScale = userBoneLen / modelBoneLen;
+			//boneScale = 1f;
+		}
+
+		if(boneScale > 0f)
+		{
+			Vector3 posDiff = (posJoint - posHipCenter) / boneScale;
+			if(foregroundCamera == null && backgroundPlane == null)
+				posDiff.z = 0f;  // ignore difference in z (non-overlay mode)
+
+			Vector3 posJointNew = hipCenter.position + posDiff;
+			joint.position = posJointNew;
+
+			return true;
+		}
+
+		return false;
+	}
+
+    void OnGUI()
     {
-        Is_允许控制相机 = true;
-        var angles = transform.eulerAngles;
-        xTargetPoint = xPoint = F_Y轴初始值;
-        yTargetPoint = yPoint = F_X轴初始值;
-        F_目标点与相机的当前距离 = F_目标点与相机的初始距离;
-    }
-
-    public void 相机移动到某位置(bool Is_瞬移,Vector3 pos ,Vector3 rot)
-    {
+       
+          //  GUI.Label(new Rect(100, 400, 600, 200), "body    " +test, ss);
 
     }
 
-    public void 相机瞬移到某位置()
-    {
-        Is_允许平滑效果 = false;
-        F_目标点与相机的最大距离 = 9999;
-        F_目标点与相机的当前距离 = F_远视角的距离;
-        xTargetPoint = 270;
-        yTargetPoint = 0;
-        Quaternion rotation = Quaternion.Euler(yTargetPoint, xTargetPoint, 0);
-        Vector3 position = rotation * new Vector3(0.0f, 0.0f, -F_目标点与相机的当前距离) + T_target1.position + pivotOffset;
-        transform.position = position;
-        transform.rotation = rotation;
-        F_目标点距离相机的平滑距离 = F_目标点与相机的当前距离;
-        xPoint = xTargetPoint;
-        yPoint = yTargetPoint;
-        //  Is_允许平滑效果 = true;
-
-    }
-
-    public void 相机迅速平滑到远视角位置()
-    {
-        F_目标点与相机的当前距离 = F_远视角的距离;
-        xTargetPoint = 270;
-        yTargetPoint = 0;
-    }
-
-   
-
-   
-    IEnumerator IE_视角拉近到某一点(string a)
-    {
-        //  Is_允许控制相机 = false;
-        float F_变化时间 = 1;
-        Is_允许平滑效果 = true;
-      
-
-        if (a == "原点")
-        {
-            DOTween.To(() => F_目标点与相机的当前距离, x => F_目标点与相机的当前距离 = x, 17, F_变化时间).SetEase(Ease.Linear);
-            DOTween.To(() => xTargetPoint, x => xTargetPoint = x, 180, F_变化时间).SetEase(Ease.Linear);
-            DOTween.To(() => yTargetPoint, x => yTargetPoint = x, 50, F_变化时间).SetEase(Ease.Linear);
-            yield return new WaitForSeconds(F_变化时间 + F_阻尼值);
-            F_Y轴最小倾斜角度 = 0;
-            F_目标点与相机的最小距离 = 0;
-            F_目标点与相机的最大距离 = 200;
-        }
-        else
-
-        {
-
-            DOTween.To(() => F_目标点与相机的当前距离, x => F_目标点与相机的当前距离 = x, 50, F_变化时间).SetEase(Ease.Linear);
-            DOTween.To(() => xTargetPoint, x => xTargetPoint = x, 180, F_变化时间).SetEase(Ease.Linear);
-            DOTween.To(() => yTargetPoint, x => yTargetPoint = x, 50, F_变化时间).SetEase(Ease.Linear);
-            yield return new WaitForSeconds(F_变化时间 + F_阻尼值);
-            F_Y轴最小倾斜角度 = 0;
-            F_目标点与相机的最小距离 = 50;
-            F_目标点与相机的最大距离 = 150;
-
-        }
-
-    }
-
-    private static float ClampAngle(float angle, float min, float max)
-    {
-        if (angle < -360) angle += 360;
-        if (angle > 360) angle -= 360;
-        return Mathf.Clamp(angle, min, max);
-    }
 }
